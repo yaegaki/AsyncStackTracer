@@ -13,7 +13,5 @@ namespace AsyncStackTracer
             OriginalStackTrace = originalStackTrace;
             StackFrame = stackFrame;
         }
-
-        public MethodBase GetMethod() => StackFrame?.GetMethod();
     }
 }

@@ -13,21 +13,32 @@ namespace AsyncStackTracer.Samples.SimpleAction
             Hoge();
 
             // invoke all asynchronous actions
-            foreach (var action in actions)
-            {
-                action();
-            }
+            InvokeAllActions();
         }
 
         static void Hoge()
         {
-            Console.WriteLine("--- call synchronous ---");
-            Console.WriteLine("StackTrace:");
+            Console.WriteLine("--- synchronous ---");
+            Console.WriteLine("OriginalStackTrace:");
             Console.WriteLine(new StackTrace(true));
 
-            AsyncInvoke(DoWithOriginalStackTrace);
+            AsyncInvoke(AsyncStackTraceHelper.CreateContext().Wrap(() =>
+            {
+                Console.WriteLine("--- asynchronous ---");
+                Console.WriteLine("OriginalStackTrace:");
+                Console.WriteLine(new StackTrace(true));
+                Console.WriteLine("AsyncStackTrace:");
+                Console.WriteLine(new AsyncStackTrace(true));
 
-            AsyncInvoke(AsyncStackTraceHelper.CreateContext().Wrap(DoWithAsyncStackTrace));
+                AsyncInvoke(AsyncStackTraceHelper.CreateContext().Wrap(() =>
+                {
+                    Console.WriteLine("--- nested asynchronous ---");
+                    Console.WriteLine("OriginalStackTrace:");
+                    Console.WriteLine(new StackTrace(true));
+                    Console.WriteLine("AsyncStackTrace:");
+                    Console.WriteLine(new AsyncStackTrace(true));
+                }));
+            }));
         }
 
         static void DoWithOriginalStackTrace()
@@ -46,5 +57,18 @@ namespace AsyncStackTracer.Samples.SimpleAction
 
         static void AsyncInvoke(Action action)
             => actions.Add(action);
+
+        static void InvokeAllActions()
+        {
+            while (actions.Count > 0)
+            {
+                var temp = new List<Action>(actions);
+                actions.Clear();
+                foreach (var x in temp)
+                {
+                    x();
+                }
+            }
+        }
     }
 }

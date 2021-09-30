@@ -1,6 +1,6 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Text;
 
 namespace AsyncStackTracer
@@ -8,20 +8,19 @@ namespace AsyncStackTracer
     public class AsyncStackTrace
     {
         private readonly StackTrace originalStackTrace;
-        private readonly IReadOnlyList<AsyncStackFrame> stackFrames;
-        private readonly int skipFrames;
-        private readonly int frameCount;
         private readonly bool fNeedFileInfo;
+        private readonly IReadOnlyList<AsyncStackFrame> stackFrames;
 
-        public int FrameCount => frameCount;
+        public int FrameCount => stackFrames.Count;
+        public StackTrace OriginalStackTrace => originalStackTrace;
 
         public AsyncStackTrace()
-            : this(2, false)
+            : this(1, false)
         {
         }
 
         public AsyncStackTrace(bool fNeedFileInfo)
-            : this(2, fNeedFileInfo)
+            : this(1, fNeedFileInfo)
         {
         }
 
@@ -29,56 +28,49 @@ namespace AsyncStackTracer
         {
             // always get all frames and file info
             originalStackTrace = new StackTrace(true);
-            this.skipFrames = skipFrames;
+            skipFrames += 1;
             this.fNeedFileInfo = fNeedFileInfo;
 
             var context = AsyncStackTraceContext.Current.Value;
-            if (context.stackFrameConnector == null)
+            if (context.IsEmpty)
             {
-                stackFrames = originalStackTrace.GetFrames()
-                    .Select(x => new AsyncStackFrame(originalStackTrace, x))
-                    .ToList();
+                var count = originalStackTrace.FrameCount - skipFrames;
+                if (count <= 0)
+                {
+                    stackFrames = Array.Empty<AsyncStackFrame>();
+                }
+                else
+                {
+                    var index = 0;
+                    var array = new AsyncStackFrame[count];
+                    for (var i = skipFrames; i < originalStackTrace.FrameCount; i++)
+                    {
+                        array[index] = new AsyncStackFrame(originalStackTrace, originalStackTrace.GetFrame(i));
+                        index++;
+                    }
+                    stackFrames = array;
+                }
             }
             else
             {
-                var parent = context.stackTrace;
-                stackFrames = context.stackFrameConnector.Connect(parent.stackFrames, parent.skipFrames, originalStackTrace);
-            }
-
-            frameCount = stackFrames.Count - this.skipFrames;
-            if (frameCount < 0)
-            {
-                frameCount = 0;
+                stackFrames = context.stackTraceMerger.Merge(context.stackTrace.stackFrames, originalStackTrace, skipFrames);
             }
         }
 
-        public StackTrace GetOriginalStackTrace()
-        {
-            return originalStackTrace;
-        }
-
-        public AsyncStackFrame GetFrame(int index)
-        {
-            index = index + skipFrames;
-            if (index < 0 || index >= stackFrames.Count)
-            {
-                return default;
-            }
-
-            return stackFrames[index];
-        }
+        public IReadOnlyList<AsyncStackFrame> GetFrames()
+            => stackFrames;
 
         public override string ToString()
         {
             var sb = new StringBuilder();
-            foreach (var stackFrame in stackFrames.Skip(skipFrames).Select(f => f.StackFrame))
+            foreach (var sf in stackFrames)
             {
                 sb.Append("   at ");
-                var mb = stackFrame.GetMethod();
+                var mb = sf.StackFrame.GetMethod();
                 sb.AppendFormat("{0}.{1}", mb.DeclaringType, mb.Name);
                 if (fNeedFileInfo)
                 {
-                    sb.AppendFormat(" in {0}:{1}", stackFrame.GetFileName(), stackFrame.GetFileLineNumber());
+                    sb.AppendFormat(" in {0}:{1}", sf.StackFrame.GetFileName(), sf.StackFrame.GetFileLineNumber());
                 }
                 sb.AppendLine();
             }

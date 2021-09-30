@@ -8,12 +8,14 @@ namespace AsyncStackTracer
         internal static readonly ThreadLocal<AsyncStackTraceContext> Current = new ThreadLocal<AsyncStackTraceContext>();
 
         internal readonly AsyncStackTrace stackTrace;
-        internal readonly IStackFrameConnector stackFrameConnector;
+        internal readonly IStackTraceMerger stackTraceMerger;
 
-        internal AsyncStackTraceContext(IStackFrameConnector stackFrameConnector, int skipFrames)
+        internal bool IsEmpty => stackTrace == null;
+
+        internal AsyncStackTraceContext(IStackTraceMerger stackTraceMerger, int skipFrames)
         {
-            stackTrace = new AsyncStackTrace(skipFrames, false);
-            this.stackFrameConnector = stackFrameConnector;
+            stackTrace = new AsyncStackTrace(skipFrames + 1, false);
+            this.stackTraceMerger = stackTraceMerger;
         }
 
         public Action Wrap(Action action)
@@ -42,53 +44,57 @@ namespace AsyncStackTracer
 
         public void Use(Action action)
         {
+            var current = AsyncStackTraceContext.Current.Value;
             try
             {
                 AsyncStackTraceContext.Current.Value = this;
-                StackFrameFenceBegin.Invoke(action);
+                StackFrameFence.Invoke(action);
             }
             finally
             {
-                AsyncStackTraceContext.Current.Value = default;
+                AsyncStackTraceContext.Current.Value = current;
             }
         }
 
         public void Use<T>(Action<T> action, T state)
         {
+            var current = AsyncStackTraceContext.Current.Value;
             try
             {
                 AsyncStackTraceContext.Current.Value = this;
-                StackFrameFenceBegin.Invoke(action, state);
+                StackFrameFence.Invoke(action, state);
             }
             finally
             {
-                AsyncStackTraceContext.Current.Value = default;
+                AsyncStackTraceContext.Current.Value = current;
             }
         }
 
         public T Use<T>(Func<T> action)
         {
+            var current = AsyncStackTraceContext.Current.Value;
             try
             {
                 AsyncStackTraceContext.Current.Value = this;
-                return StackFrameFenceBegin.Invoke(action);
+                return StackFrameFence.Invoke(action);
             }
             finally
             {
-                AsyncStackTraceContext.Current.Value = default;
+                AsyncStackTraceContext.Current.Value = current;
             }
         }
 
         public TResult Use<TState, TResult>(Func<TState, TResult> action, TState state)
         {
+            var current = AsyncStackTraceContext.Current.Value;
             try
             {
                 AsyncStackTraceContext.Current.Value = this;
-                return StackFrameFenceBegin.Invoke(action, state);
+                return StackFrameFence.Invoke(action, state);
             }
             finally
             {
-                AsyncStackTraceContext.Current.Value = default;
+                AsyncStackTraceContext.Current.Value = current;
             }
         }
     }
